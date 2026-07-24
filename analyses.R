@@ -141,9 +141,23 @@ d_descrip %>%
   summarize(mean = mean(slider_assess.response,na.rm = T),
             sd = sd(slider_assess.response,na.rm = T))
 
+d_descrip %>%
+  select(slider_assess.response, slider_reveal.response) %>%
+  {mean(is.na(as.matrix(.))) * 100}
+
+d_post <- read_csv('data/real/post_scan_survey_clean.csv') %>%
+  filter(sub != 'DAT002')
+
+d_post %>%
+  summarize(
+    message_pct = mean(message, na.rm = TRUE) * 100,
+    contact_pct = mean(contact, na.rm = TRUE) * 100,
+    belief_pct  = mean(belief,  na.rm = TRUE) * 100
+  )
+
 #### How did participants’ romantic interest change in response to social feedback? #####
 ## prep #####
-d_raw <- read_csv('data/real/fmri_ratings_fa.csv')
+d_raw <- read_csv('osf/SurveysData/fmri_ratings_fa.csv')
 
 d <- d_raw %>% 
   select(-c(assess_video_onset,assess_video_duration,
@@ -187,6 +201,15 @@ d <- d_raw %>%
          Difference_memtime = memorytime - lag(memorytime),
          Difference_memsum = memorysum - lag(memorysum),
          Difference_memperc = memoryperc - lag(memoryperc)) 
+
+# test that results hold for only people who believed the cover story (uncomment)
+#belief <- read_csv('task_data/post_scan_survey_clean.csv') %>%
+#  select(sub, belief)
+
+#d <- d %>%
+#  left_join(belief, by = "sub") %>%
+#  filter(belief == 1)
+
 ## models #####
 M1A <- lmer(Difference_slider ~ congruence.e*feedback.e +
               (1 + congruence.e*feedback.e | sub),
@@ -223,13 +246,15 @@ F1A <- ggplot(d %>%
   ) +
   geom_jitter(width = .1, alpha = .4, size = 2) +
   geom_smooth(method = "lm", size = 2) +
+  annotate('text',label = '***', x = .5, y = 5, size = 10) +
   theme_bw() +
   labs(y = "Change in romantic interest",
        x = "Feedback congruence with participant",
        color = "Feedback valence") +
   scale_x_continuous(breaks = c(0,1),labels = c('Incongruent',
-                                                'Congruent')) +
-  scale_y_continuous(limits = c(-6,6)) +
+                                                'Congruent'),
+                     limits = c(-.2,1.2)) +
+  scale_y_continuous(limits = c(-4.6,6)) +
   scale_color_manual(values = c("Neg" = "skyblue2",
                                 "Pos" = "lightpink2"),
                      limits = c("Pos","Neg")) +
@@ -258,9 +283,13 @@ F1B <- ggplot(d_F1B,
   geom_errorbar(aes(ymin = mean_sim - (1.96*.189), ymax = mean_sim + (1.96*.189)),
                 position = position_dodge(width = .9), width = .25) +
   theme_bw() +
-  lims(y = c(-.2,2.1)) +
-  geom_segment(x = 0, xend = 1, y = 2, yend = 2) +
-  annotate('text',label = '**', x = .5, y = 2.02, size = 10) +
+  lims(y = c(-.2,2.5)) +
+  geom_segment(x = 0, xend = 1, y = 2.4, yend = 2.4, size = 1.25) +
+  geom_segment(x = -.25, xend = .25, y = 2, yend = 2, size = 1.25) +
+  geom_segment(x = .75, xend = 1.25, y = 1, yend = 1, size = 1.25) +
+  geom_segment(x = 0, xend = 0, y = 2, yend = 2.4, size = 1.25) +
+  geom_segment(x = 1, xend = 1, y = 1, yend = 2.4, size = 1.25) +
+  annotate('text',label = '***', x = .5, y = 2.45, size = 10) +
   labs(y = "Change in romantic interest\nin the direction of feedback",
        x = "Feedback congruence with participant",
        fill = "Feedback valence") +
@@ -274,15 +303,18 @@ F1B <- ggplot(d_F1B,
         legend.title = element_text(size = 24),
         legend.text = element_text(size = 22))
 
-F1 <- ggarrange(F1A,F1B,
-                labels = c("A","B"),
-                nrow = 1, ncol = 2,
+blank <- ggplot() + theme_void()
+F1 <- ggarrange(F1A,blank,F1B,
+                labels = c("A","","B"),
+                nrow = 1, ncol = 3,
+                widths = c(.45,.05,.5),
                 font.label = list(size = 20),
                 common.legend = T, legend = 'bottom')
+
 annotate_figure(F1, 
                 top = text_grob("Effect of target feedback on romantic interest",
                                 face = "bold",size = 28))
-ggsave("manuscript/figs/Fig1.jpg", width = 12, height = 6)
+ggsave("osf/figs/Fig1.jpg", width = 12, height = 6)
 
 F1B +
   labs(title = "Effect of target feedback on romantic interest",
@@ -361,7 +393,7 @@ rois_char_paper <- setNames(rois$roi_label_paper, rois$roi_label_paper)
 
 #### Did the mentalizing network represent romantic interest? ######
 ### prep #####
-df2 <- read_csv('neurbehav_allqs_noruns_spatial.csv')
+df2 <- read_csv('osf/SurveysData/neurbehav_allqs_noruns_spatial.csv')
 
 df2_sum <- df2 %>% 
   filter(template2 == '10secs' | template2 == 'last10secs' | is.na(template2)) %>% 
@@ -377,68 +409,30 @@ df2_sum <- df2 %>%
   mutate(roi = as.character(roi)) 
 
 
-### stats ####
-## t tests #####
-# whole video ####
-# along with visual inspection of figure
-df2_sum_ttests <- df2_sum %>% 
-  filter(is.na(template2))
+### stats (permutations) ####
+df2 <- read_csv('osf/SurveysData/neurbehav_allqs_noruns_spatial.csv')
+## whole video ######
+df2_whole <- df2 %>% 
+  filter(is.na(template2),
+         roi %in% rois$roi)
 
-t1 <- t.test(df2_sum_ttests[df2_sum_ttests$roi == 'ns_mentalizing_RTPJ',]$cor,alternative= "greater", mu=0)
-t3 <- t.test(df2_sum_ttests[df2_sum_ttests$roi == 'neurosynth_mentalizing',]$cor,alternative= "greater", mu=0)
-
-# first 10 seconds ####
-df2_sum_ttests <- df2_sum %>% 
-  filter(template2 == '10secs')
-
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'neurosynth_mentalizing',]$cor,alternative= "greater", mu=0)
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'ns_mentalizing_dmPFC',]$cor,alternative= "greater", mu=0)
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'ns_mentalizing_RTPJ',]$cor,alternative= "greater", mu=0)
-
-# last 10 seconds ####
-df2_sum_ttests <- df2_sum %>% 
-  filter(template2 == 'last10secs')
-
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'neurosynth_mentalizing',]$cor,alternative= "greater", mu=0)
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'ns_mentalizing_dmPFC',]$cor,alternative= "greater", mu=0)
-t.test(df2_sum_ttests[df2_sum_ttests$roi == 'ns_mentalizing_RTPJ',]$cor,alternative= "greater", mu=0)
-
-# comparisons ####
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'ns_mentalizing_RTPJ',
-                                                  template2 != 'Whole'))
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'neurosynth_mentalizing',
-                                                  template2 != 'Whole'))
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'ns_mentalizing_dmPFC',
-                                                  template2 != 'Whole'))
-
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'ns_mentalizing_RTPJ',
-                                                  template2 != 'last10secs'))
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'neurosynth_mentalizing',
-                                                  template2 != 'last10secs'))
-t.test(cor ~ template2, data = df2_sum %>% filter(roi == 'ns_mentalizing_dmPFC',
-                                                  template2 != 'last10secs'))
-## permutations ####
-# whole video ######
-df2 <- read_csv('neurbehav_allqs_noruns_spatial.csv')
-df2 <- df2 %>% 
-  filter(is.na(template2))
-
-df2_sum <- df2 %>% 
-  filter(is.na(template2)) %>% 
+df2_sum_whole <- df2_whole %>% 
   group_by(roi) %>% 
   mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
   filter(!is.na(na_check)) %>% 
   ungroup() %>% 
   group_by(roi,profile,video) %>% 
-  summarize(cor = cor(brain_correlation,behavior_distance, 
+  summarize(cor = cor(1 - brain_correlation,behavior_distance, 
                       method = "spearman",
                       use = "complete.obs")) %>% 
   mutate(roi = as.character(roi)) 
 
-df2_permute <- vector("list", 1000)
+df2_permute_whole_raw <- vector("list", 1000)
 for (i in 1:1000) {
   set.seed(i)
-  df2_permute[[i]] <- df2 %>% 
+  df2_permute_whole_raw[[i]] <- df2_whole %>% 
+    filter(is.na(template2),
+           roi %in% rois$roi) %>% 
     group_by(roi) %>% 
     mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
     filter(!is.na(na_check)) %>% 
@@ -454,10 +448,10 @@ for (i in 1:1000) {
     mutate(iteration = i)
 }
 
-df2_permute <- bind_rows(df2_permute)
+df2_permute_whole <- bind_rows(df2_permute_whole_raw)
 
-df2_permute <- df2_permute %>% 
-  bind_rows(df2_sum %>% 
+df2_permute_whole <- df2_permute_whole %>% 
+  bind_rows(df2_sum_whole %>% 
               group_by(roi) %>% 
               summarize(cor = mean(cor)) %>% 
               mutate(iteration = 0)) %>% 
@@ -465,19 +459,19 @@ df2_permute <- df2_permute %>%
   group_by(roi) %>% 
   mutate(mean = mean(cor),
          sd = sd(cor),
-         cutoff = mean - 1.645*sd)
+         cutoff = mean + 1.645*sd)
+saveRDS(df2_permute_whole, file = "df2_permute_whole.rds")
 
 # replace with relevant ROI to calculate # of higher permutations 
-df2_testing <- df2_permute %>% 
-  filter(roi == 'ns_mentalizing_RTempPole')
+df2_testing <- df2_permute_whole %>% 
+  filter(roi == 'neurosynth_mentalizing')
 
-# first 10 seconds ####
-df2 <- read_csv('neurbehav_allqs_noruns_spatial.csv')
-df2 <- df2 %>% 
-  filter(template2 == '10secs')
+## first 10 seconds ####
+df2_10secs <- df2 %>% 
+  filter(template2 == '10secs',
+         roi %in% rois$roi)
 
-df2_sum <- df2 %>% 
-  filter(template2 == '10secs') %>% 
+df2_sum_10secs <- df2_10secs %>% 
   group_by(roi) %>% 
   mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
   filter(!is.na(na_check)) %>% 
@@ -486,14 +480,12 @@ df2_sum <- df2 %>%
   summarize(cor = cor(1 - brain_correlation,behavior_distance, 
                       method = "spearman",
                       use = "complete.obs")) %>% 
-  mutate(roi = as.character(roi),
-         #roi = str_replace(roi,"_","\n")
-  ) 
+  mutate(roi = as.character(roi)) 
 
-df2a_permute <- vector("list", 100)
+df2_permute_raw_10secs <- vector("list", 1000)
 for (i in 1:1000) {
   set.seed(i)
-  df2a_permute[[i]] <- df2 %>% 
+  df2_permute_raw_10secs[[i]] <- df2_10secs %>% 
     group_by(roi) %>% 
     mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
     filter(!is.na(na_check)) %>% 
@@ -509,10 +501,10 @@ for (i in 1:1000) {
     mutate(iteration = i)
 }
 
-df2a_permute <- bind_rows(df2a_permute)
+df2_permute_10secs <- bind_rows(df2_permute_raw_10secs)
 
-df2a_permute <- df2a_permute %>% 
-  bind_rows(df2_sum %>% 
+df2_permute_10secs <- df2_permute_10secs %>% 
+  bind_rows(df2_sum_10secs %>% 
               group_by(roi) %>% 
               summarize(cor = mean(cor)) %>% 
               mutate(iteration = 0)) %>% 
@@ -520,15 +512,15 @@ df2a_permute <- df2a_permute %>%
   group_by(roi) %>% 
   mutate(mean = mean(cor),
          sd = sd(cor),
-         cutoff = mean - 1.645*sd)
+         cutoff = mean + 1.645*sd)
+saveRDS(df2_permute_10secs, file = "df2_permute_10secs.rds")
 
-# last 10 seconds ####
-df2 <- read_csv('neurbehav_allqs_noruns_spatial.csv')
-df2 <- df2 %>% 
-  filter(template2 == 'last10secs')
+## last 10 seconds ####
+df2_last10secs <- df2 %>% 
+  filter(template2 == 'last10secs',
+         roi %in% rois$roi)
 
-df2_sum <- df2 %>% 
-  filter(template2 == 'last10secs') %>% 
+df2_sum_last10secs <- df2_last10secs %>% 
   group_by(roi) %>% 
   mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
   filter(!is.na(na_check)) %>% 
@@ -537,14 +529,14 @@ df2_sum <- df2 %>%
   summarize(cor = cor(1 - brain_correlation,behavior_distance, 
                       method = "spearman",
                       use = "complete.obs")) %>% 
-  mutate(roi = as.character(roi),
-         #roi = str_replace(roi,"_","\n")
-  ) 
+  mutate(roi = as.character(roi),) 
 
-df2b_permute <- vector("list", 100)
+df2_permute_raw_last10secs <- vector("list", 1000)
 for (i in 1:1000) {
   set.seed(i)
-  df2b_permute[[i]] <- df2 %>% 
+  df2_permute_raw_last10secs[[i]] <- df2_last10secs %>% 
+    filter(template2 == 'last10secs',
+           roi %in% rois$roi) %>% 
     group_by(roi) %>% 
     mutate(na_check = mean(brain_correlation,na.rm = T)) %>% 
     filter(!is.na(na_check)) %>% 
@@ -560,10 +552,10 @@ for (i in 1:1000) {
     mutate(iteration = i)
 }
 
-df2b_permute <- bind_rows(df2b_permute)
+df2_permute_last10secs <- bind_rows(df2_permute_raw_last10secs)
 
-df2b_permute <- df2b_permute %>% 
-  bind_rows(df2_sum %>% 
+df2_permute_last10secs <- df2_permute_last10secs %>% 
+  bind_rows(df2_sum_last10secs %>% 
               group_by(roi) %>% 
               summarize(cor = mean(cor)) %>% 
               mutate(iteration = 0)) %>% 
@@ -571,10 +563,74 @@ df2b_permute <- df2b_permute %>%
   group_by(roi) %>% 
   mutate(mean = mean(cor),
          sd = sd(cor),
-         cutoff = mean - 1.645*sd)
+         cutoff = mean + 1.645*sd)
+saveRDS(df2_permute_last10secs, file = "df2_permute_last10secs.rds")
+
+## comparisons #####
+df2_fl <- df2 %>%
+  filter(template2 %in% c('10secs','last10secs'),
+         roi %in% rois$roi) %>%
+  pivot_wider(id_cols = c(roi, profile, video, sub1, sub2, behavior_distance),
+              names_from = template2,
+              values_from = brain_correlation) %>%
+  rename(first10 = `10secs`, last10 = last10secs) %>%
+  mutate(roi = as.character(roi))
+
+fl_stat <- function(dat, col_first, col_last) {
+  s1 <- dat %>% group_by(roi, profile, video) %>%
+    summarize(cor = cor(1 - .data[[col_first]], behavior_distance,
+                        method = "spearman", use = "complete.obs"),
+              .groups = "drop") %>%
+    group_by(roi) %>% summarize(first = mean(cor, na.rm = TRUE), .groups = "drop")
+  s2 <- dat %>% group_by(roi, profile, video) %>%
+    summarize(cor = cor(1 - .data[[col_last]], behavior_distance,
+                        method = "spearman", use = "complete.obs"),
+              .groups = "drop") %>%
+    group_by(roi) %>% summarize(last = mean(cor, na.rm = TRUE), .groups = "drop")
+  left_join(s1, s2, by = "roi") %>% mutate(diff = first - last)
+}
+
+df2_fl_sum <- fl_stat(df2_fl, "first10", "last10") %>%
+  mutate(iteration = 0)
+
+df2_fl_permute_raw <- vector("list", 1000)
+for (i in 1:1000) {
+  set.seed(i)
+  flip <- runif(nrow(df2_fl)) < 0.5
+  perm <- df2_fl %>%
+    mutate(perm_first = if_else(flip, last10, first10),
+           perm_last  = if_else(flip, first10, last10))
+  df2_fl_permute_raw[[i]] <- fl_stat(perm, "perm_first", "perm_last") %>%
+    select(roi, diff) %>%
+    mutate(iteration = i)
+}
+
+df2_fl_permute <- bind_rows(df2_fl_permute_raw) %>%
+  bind_rows(df2_fl_sum %>% select(roi, diff, iteration)) %>%
+  mutate(real = if_else(iteration == 0, 1, 0))
+
+df2_fl_summary <- df2_fl_permute %>%
+  group_by(roi) %>%
+  summarize(
+    obs_diff  = diff[real == 1],
+    null_mean = mean(diff[real == 0]),
+    null_sd   = sd(diff[real == 0]),
+    p_two = (1 + sum(abs(diff[real == 0] - mean(diff[real == 0])) >=
+                       abs(diff[real == 1] - mean(diff[real == 0])))) /
+      (1 + sum(real == 0)),
+    .groups = "drop") %>%
+  mutate(z = (obs_diff - null_mean) / null_sd) %>%
+  arrange(p_two)
+
+saveRDS(df2_fl_permute, file = "df2_fl_permute.rds")
+
+# replace with relevant ROI
+df2_fl_testing <- df2_fl_permute %>%
+  filter(roi == 'neurosynth_mentalizing')
+
 ### Figure ######
 # prep #####
-df2 <- read_csv('neurbehav_allqs_noruns_spatial.csv')
+df2 <- read_csv('osf/SurveysData/neurbehav_allqs_noruns_spatial.csv')
 
 df2_sum <- df2 %>% 
   filter(template2 == '10secs' | template2 == 'last10secs' | is.na(template2)) %>% 
@@ -589,7 +645,7 @@ df2_sum <- df2 %>%
                       use = "complete.obs")) %>% 
   mutate(roi = as.character(roi)) 
 # permutation prep ####
-df2_permute_paper <- df2_permute %>% 
+df2_permute_whole_paper <- df2_permute_whole %>% 
   left_join(rois) %>% 
   mutate(roi_label_paper = factor(roi_label_paper, levels = rev(c('Mentalizing\nnetwork','L TPJ',
                                                                   'R TPJ', 'L Temporal\nPole',
@@ -598,7 +654,7 @@ df2_permute_paper <- df2_permute %>%
          template2 = 'Whole') %>% 
   filter(!is.na(roi_label_paper))
 
-df2a_permute_paper <- df2a_permute %>% 
+df2_permute_10secs_paper <- df2_permute_10secs %>% 
   left_join(rois) %>% 
   mutate(roi_label_paper = factor(roi_label_paper, levels = rev(c('Mentalizing\nnetwork','L TPJ',
                                                                   'R TPJ', 'L Temporal\nPole',
@@ -607,7 +663,7 @@ df2a_permute_paper <- df2a_permute %>%
          template2 = '10secs') %>% 
   filter(!is.na(roi_label_paper))
 
-df2b_permute_paper <- df2b_permute %>% 
+df2_permute_paper_last10secs <- df2_permute_last10secs %>% 
   left_join(rois) %>% 
   mutate(roi_label_paper = factor(roi_label_paper, levels = rev(c('Mentalizing\nnetwork','L TPJ',
                                                                   'R TPJ', 'L Temporal\nPole',
@@ -616,8 +672,8 @@ df2b_permute_paper <- df2b_permute %>%
          template2 = 'last10secs') %>% 
   filter(!is.na(roi_label_paper))
 
-df2all_permute_paper <- df2_permute_paper %>% 
-  bind_rows(df2a_permute_paper,df2b_permute_paper) %>% 
+df2all_permute_paper <- df2_permute_whole_paper %>% 
+  bind_rows(df2_permute_10secs_paper,df2_permute_last10secs_paper) %>% 
   mutate(Main = if_else(template2 == 'Whole',0,1))
 
 # F2A #####
@@ -639,7 +695,6 @@ F2A <- ggplot(df2_sum_paper %>%
                 filter(roi_label_paper == 'Mentalizing\nnetwork'),
               aes(x = roi_label_paper, y = cor, 
                   group = template2, color = template2,fill = template2)) +
-  geom_jitter(alpha = .15,position = position_jitterdodge()) +
   geom_hline(yintercept = 0, linetype = "dashed", alpha = .4) +
   geom_violin(data = df2all_permute_paper %>% 
                 filter(roi_label_paper == 'Mentalizing\nnetwork'),aes(x = roi_label_paper,
@@ -647,8 +702,9 @@ F2A <- ggplot(df2_sum_paper %>%
                                                                       group = template2,
                                                                       color = template2,
                                                                       fill = template2),
-              alpha = .2, width = .6,
-              position = position_dodge(width = .9)) +
+              alpha = .6, width = .6,
+              position = position_dodge(width = .9), color = NA, fill = 'gray') +
+  geom_jitter(alpha = .2,position = position_jitterdodge()) +
   facet_grid(cols = vars(Main)) +
   theme_bw() +
   scale_x_discrete() +
@@ -670,7 +726,6 @@ F2B <- ggplot(df2_sum_paper %>%
                 filter(roi_label_paper != 'Mentalizing\nnetwork'),
               aes(x = roi_label_paper, y = cor, 
                   group = template2, color = template2,fill = template2)) +
-  geom_jitter(alpha = .15,position = position_jitterdodge()) +
   geom_hline(yintercept = 0, linetype = "dashed", alpha = .4) +
   geom_violin(data = df2all_permute_paper %>% 
                 filter(roi_label_paper != 'Mentalizing\nnetwork'),aes(x = roi_label_paper,
@@ -678,8 +733,9 @@ F2B <- ggplot(df2_sum_paper %>%
                                                                       group = interaction(template2,roi_label_paper),
                                                                       color = template2,
                                                                       fill = template2),
-              alpha = .2, width = .8,
-              position = position_dodge(width = .9)) +
+              alpha = .6, width = .8,
+              position = position_dodge(width = .9), color = NA, fill = 'gray') +
+  geom_jitter(alpha = .2,position = position_jitterdodge()) +
   facet_grid(rows = vars(Main)) +
   theme_bw() +
   scale_x_discrete() +
@@ -706,10 +762,18 @@ top_row <- ggarrange(
 ggarrange(top_row,F2B,
           nrow = 2, ncol = 1,
           heights = c(1,1))
-ggsave("Fig2.jpg", width = 9, height = 6)
+ggsave("osf/figs/Fig2.jpg", width = 9, height = 6)
 #### How were neural representations of potential romantic partners updated in response to feedback? ######
 ### prep #####
 df4 <- read_csv('acrossrun.csv')
+
+# test to see if results hold with only explicit belief in cover story (uncomment)
+#belief <- read_csv('task_data/post_scan_survey_clean.csv') %>%
+#  select(sub, belief)
+
+#df4 <- df4 %>%
+#  left_join(belief, by = "sub") %>%
+#  filter(belief == 1)
 ### Stats #####
 F3A1_stats <- df4 %>% 
   filter(comp_type == 'within_pro',
@@ -895,10 +959,12 @@ ggsave("Fig3.jpg", width = 12, height = 6)
 
 #### How often were neural representations of potential romantic partners reactivated during rest in response to feedback? ####
 ### prep ####
-df5 <- read_csv('reactivation_wholerest.csv')
+df5 <- read_csv('osf/SurveysData/reactivation_wholerest.csv')
 df5 <- df5 %>% 
   filter(!(templaterun == 1 & run == 2) &
            !(templaterun == 2 & run == 1))
+
+behavior <- read_csv('osf/SurveysData/fmri_ratings_fa.csv')
 ### Stats #####
 ## Increase over baseline rest ####
 F4A_stats01 <- df5 %>% 
@@ -1075,11 +1141,12 @@ F4A <- ggplot(F4A_sum_paper %>%
                    xend = segment_endx,yend = segment_endy),
                color = 'black') +
   geom_hline(yintercept = 0, linetype = 'dashed', alpha = .3) +
-  labs(x = 'Resting state run',y = 'Reactivation\n% increase',
+  labs(x = 'Resting state run',y = 'Reactivation %\nincrease over rest',
        color = 'Congruence') +
   theme(strip.text.y = element_text(size = 8),
         plot.title = element_text(hjust = .5,size = 14),
-        legend.position = 'none')
+        legend.position = 'none',
+        panel.spacing.x = unit(1.5,"cm"))
 # F4B #####
 
 F4B <- ggplot(F4A_sum_paper %>% 
@@ -1095,7 +1162,7 @@ F4B <- ggplot(F4A_sum_paper %>%
   scale_x_continuous(breaks = c(1,2),labels = c('Pre-\nfeedback','Post-\nfeedback'),
                      limits = c(.8,2.2)) +
   scale_color_manual(values = c("darkseagreen4","firebrick3"),
-                     labels = c("Congruent","Incongruent")) +
+                     labels = c("Congruent   ","Incongruent")) +
   lims(y = c(-6,71)) +
   geom_text(aes(label = sig01),x = 1,y = 57.5, size = 5, color = 'black') +
   geom_text(aes(label = sig02),x = 2,y = 57.5, size = 5,color = 'black') +
@@ -1104,12 +1171,13 @@ F4B <- ggplot(F4A_sum_paper %>%
                    xend = segment_endx,yend = segment_endy),
                color = 'black') +
   geom_hline(yintercept = 0, linetype = 'dashed', alpha = .3) +
-  labs(x = 'Resting state run',y = 'Reactivation\n% increase',
+  labs(x = 'Resting state run',y = 'Reactivation %\nincrease over rest',
        color = 'Congruence') +
   theme(strip.text.y = element_text(size = 8),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12),
-        legend.position = 'bottom')
+        legend.title = element_blank(),
+        legend.text = element_text(size = 14),
+        legend.position = 'bottom',
+        panel.spacing.x = unit(1,"cm"))
 
 
 # F4 #####
@@ -1128,6 +1196,7 @@ F4 <- ggarrange(top_row,F4B,
 annotate_figure(F4,
                 top = text_grob('Effect of run and feedback congruence on reactivation frequency', 
                                 face = "bold", size = 18))
-ggsave("Fig4.jpg", width = 9, height = 6)
+ggsave("osf/figs/Fig4.jpg", width = 9, height = 6)
+
 
 
